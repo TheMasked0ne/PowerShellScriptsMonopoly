@@ -1,0 +1,108 @@
+# Automated GPU Management Script Using WMI and PowerShell Cmdlets
+
+# Function to log messages with timestamp
+function Log-Message {
+    param (
+        [string]$Message,
+        [switch]$Error
+    )
+    $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    if ($Error) {
+        Write-Error "$timestamp - $Message"
+    } else {
+        Write-Host "$timestamp - $Message"
+    }
+}
+
+# Function to list all GPU devices and their statuses
+function List-GPUDevices {
+    try {
+        $gpuDevices = Get-WmiObject -Query "SELECT * FROM Win32_VideoController" | Sort-Object -Property DeviceID
+        if ($gpuDevices.Count -gt 0) {
+            $gpuDevices | Format-Table -Property DeviceID, Name, DriverVersion, AdapterRAM, Status -AutoSize
+            Log-Message "GPU devices listed successfully."
+        } else {
+            Log-Message "No GPU devices found."
+        }
+    } catch {
+        Log-Message "Failed to retrieve GPU devices: $_" -Error
+    }
+}
+
+# Function to update GPU drivers
+function Update-GPUDrivers {
+    try {
+        Log-Message "Starting GPU driver update."
+
+        # Use Device Management to update GPU drivers
+        $gpuDevices = Get-WmiObject -Query "SELECT * FROM Win32_VideoController"
+        foreach ($gpu in $gpuDevices) {
+            $deviceID = $gpu.DeviceID
+            Log-Message "Attempting to update driver for GPU: $($gpu.Name) ($deviceID)"
+            
+            # Update driver using Windows Update
+            Start-Process -FilePath "cmd.exe" -ArgumentList "/c devmgmt.msc /rescan" -Wait -NoNewWindow -PassThru | Out-Null
+            Log-Message "Driver update attempt for GPU: $($gpu.Name)"
+        }
+        
+        Log-Message "GPU driver update process completed."
+    } catch {
+        Log-Message "Failed to update GPU drivers: $_" -Error
+    }
+}
+
+# Function to reinstall GPU drivers
+function Reinstall-GPUDrivers {
+    try {
+        Log-Message "Starting GPU driver reinstallation."
+
+        # Find all GPU devices and reinstall drivers
+        $gpuDevices = Get-WmiObject -Query "SELECT * FROM Win32_VideoController"
+        foreach ($gpu in $gpuDevices) {
+            $deviceID = $gpu.DeviceID
+            Log-Message "Uninstalling driver for GPU: $($gpu.Name) ($deviceID)"
+            
+            # Remove GPU driver
+            $uninstallResult = Start-Process -FilePath "cmd.exe" -ArgumentList "/c devmgmt.msc /uninstall $deviceID" -Wait -NoNewWindow -PassThru | Out-Null
+            if ($uninstallResult.ExitCode -eq 0) {
+                Log-Message "Driver uninstalled successfully for GPU: $($gpu.Name)"
+                
+                # Reinstall driver
+                Log-Message "Reinstalling driver for GPU: $($gpu.Name) ($deviceID)"
+                Start-Process -FilePath "cmd.exe" -ArgumentList "/c devmgmt.msc /rescan" -Wait -NoNewWindow -PassThru | Out-Null
+            } else {
+                Log-Message "Failed to uninstall driver for GPU: $($gpu.Name)" -Error
+            }
+        }
+
+        Log-Message "GPU driver reinstallation process completed."
+    } catch {
+        Log-Message "Failed to reinstall GPU drivers: $_" -Error
+    }
+}
+
+# Function to refresh driver cache
+function Refresh-DriverCache {
+    try {
+        Log-Message "Starting driver cache refresh."
+        
+        # Refresh drivers using Device Manager
+        Start-Process -FilePath "cmd.exe" -ArgumentList "/c devmgmt.msc /rescan" -Wait -NoNewWindow -PassThru | Out-Null
+        
+        Log-Message "Driver cache refreshed successfully."
+    } catch {
+        Log-Message "Failed to refresh driver cache: $_" -Error
+    }
+}
+
+# Run automated GPU management
+function Run-Automated-GPU-Management {
+    List-GPUDevices
+    Update-GPUDrivers
+    Reinstall-GPUDrivers
+    Refresh-DriverCache
+    Log-Message "Automated GPU management completed."
+}
+
+# Execute the automated GPU management
+Run-Automated-GPU-Management
